@@ -5,6 +5,7 @@ from typing import Optional, List
 
 @dataclass
 class RadioStatus:
+    channel_id: Optional[int]
     current_speaker: Optional[str]
     current_speaker_name: Optional[str]
     waiting_queue: List[str]
