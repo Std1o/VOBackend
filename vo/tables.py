@@ -23,6 +23,6 @@ class Participants(Base):
     __tablename__ = 'participants'
 
     user_id = sa.Column(sa.Integer, sa.ForeignKey(User.id), primary_key=True)
-    course_id = sa.Column(sa.Integer, sa.ForeignKey(Channel.id, ondelete='CASCADE'), primary_key=True)
+    channel_id = sa.Column(sa.Integer, sa.ForeignKey(Channel.id, ondelete='CASCADE'), primary_key=True)
     is_moderator = sa.Column(sa.Boolean)
     is_owner = sa.Column(sa.Boolean)

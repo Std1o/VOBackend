@@ -77,7 +77,7 @@ class RadioConnectionManager:
             # Добавляем создателя как владельца канала
             participant = Participants(
                 user_id=owner_user_id,
-                course_id=new_channel.id,
+                channel_id=new_channel.id,
                 is_moderator=True,
                 is_owner=True
             )
@@ -123,7 +123,7 @@ class RadioConnectionManager:
         # Проверяем, не является ли пользователь уже участником
         existing_participant = self.session.query(Participants).filter(
             Participants.user_id == user_id,
-            Participants.course_id == channel_id
+            Participants.channel_id == channel_id
         ).first()
 
         if existing_participant:
@@ -137,7 +137,7 @@ class RadioConnectionManager:
             # Добавляем как нового участника
             participant = Participants(
                 user_id=user_id,
-                course_id=channel_id,
+                channel_id=channel_id,
                 is_moderator=is_moderator,
                 is_owner=is_owner
             )
@@ -168,7 +168,7 @@ class RadioConnectionManager:
             # Находим участника
             participant = self.session.query(Participants).filter(
                 Participants.user_id == user_id,
-                Participants.course_id == channel_id
+                Participants.channel_id == channel_id
             ).first()
 
             if not participant:
@@ -211,7 +211,7 @@ class RadioConnectionManager:
 
         # Получаем список участников
         participants = self.session.query(Participants).filter(
-            Participants.course_id == channel_id
+            Participants.channel_id == channel_id
         ).join(DBUser, Participants.user_id == DBUser.id).all()
 
         participants_info = []
@@ -250,7 +250,7 @@ class RadioConnectionManager:
 
             if include_participants:
                 participants = self.session.query(Participants).filter(
-                    Participants.course_id == channel.id
+                    Participants.channel_id == channel.id
                 ).count()
                 channel_info["participant_count"] = participants
 
@@ -272,7 +272,7 @@ class RadioConnectionManager:
             # Проверяем права доступа (только владелец может удалить канал)
             participant = self.session.query(Participants).filter(
                 Participants.user_id == requesting_user_id,
-                Participants.course_id == channel_id,
+                Participants.channel_id == channel_id,
                 Participants.is_owner == True
             ).first()
 
@@ -323,7 +323,7 @@ class RadioConnectionManager:
 
         channels_info = []
         for p in participants:
-            channel = self.session.query(Channel).filter(Channel.id == p.course_id).first()
+            channel = self.session.query(Channel).filter(Channel.id == p.channel_id).first()
             if channel:
                 channels_info.append({
                     "id": channel.id,
@@ -365,7 +365,7 @@ class RadioConnectionManager:
             # Проверяем участника канала
             participant = self.session.query(Participants).filter(
                 Participants.user_id == user.id,
-                Participants.course_id == channel_id
+                Participants.channel_id == channel_id
             ).first()
 
             if not participant:
@@ -373,7 +373,7 @@ class RadioConnectionManager:
                 try:
                     participant = Participants(
                         user_id=user.id,
-                        course_id=channel_id,
+                        channel_id=channel_id,
                         is_moderator=False,
                         is_owner=False
                     )
