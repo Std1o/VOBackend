@@ -14,6 +14,10 @@ class ChannelUsers(BaseUser):
     is_owner: bool
 
 
+class ChannelCreate(BaseChannel):
+    channel_code: str
+
+
 class Channel(BaseChannel):
     id: int
     channel_code: str

@@ -84,20 +84,6 @@ async def websocket_radio(
 
 # ========== REST API endpoints для управления каналами ==========
 
-@router.post("/api/channels")
-async def api_create_channel(
-        name: str = Query(..., description="Название канала"),
-        user: User = Depends(get_current_user),
-        radio_manager: RadioConnectionManager = Depends(get_radio_manager)
-):
-    """Создание нового канала"""
-    result = await radio_manager.create_channel(name, user.id)
-
-    if result["success"]:
-        return result
-    else:
-        raise HTTPException(status_code=400, detail=result["message"])
-
 
 @router.get("/api/channels")
 async def api_list_channels(

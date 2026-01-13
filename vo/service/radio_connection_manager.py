@@ -22,13 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def generate_course_code() -> str:
-    seq = "abcdefghijklmnopqrstuvwxyz0123456789"
-    code = ''
-    for i in range(0, 6):
-        code += random.choice(seq)
-    return code.upper()
-
 
 class RadioConnectionManager:
     def __init__(self):
@@ -44,68 +37,6 @@ class RadioConnectionManager:
         self.session = session
 
     # ========== Методы для работы с каналами ==========
-
-    async def create_channel(self, name: str,  owner_user_id: int) -> Dict:
-        channel_code = generate_course_code()
-        """Создание нового канала с указанным владельцем"""
-        try:
-            # Проверяем, существует ли уже канал с таким кодом
-            existing_channel = self.session.query(Channel).filter(
-                Channel.channel_code == channel_code
-            ).first()
-
-            if existing_channel:
-                return {
-                    "success": False,
-                    "message": "Channel with this code already exists"
-                }
-
-            # Проверяем существование пользователя
-            owner = self.session.query(DBUser).filter(DBUser.id == owner_user_id).first()
-            if not owner:
-                return {
-                    "success": False,
-                    "message": f"User with ID {owner_user_id} not found"
-                }
-
-            # Создаем новый канал
-            new_channel = Channel(name=name, channel_code=channel_code)
-            self.session.add(new_channel)
-            self.session.commit()
-            self.session.refresh(new_channel)
-
-            # Добавляем создателя как владельца канала
-            participant = Participants(
-                user_id=owner_user_id,
-                channel_id=new_channel.id,
-                is_moderator=True,
-                is_owner=True
-            )
-            self.session.add(participant)
-            self.session.commit()
-
-            logger.info(
-                f"📻 Создан новый канал: {name} (код: {channel_code}, ID: {new_channel.id}), владелец: {owner.username}")
-
-            return {
-                "success": True,
-                "message": "Channel created successfully",
-                "channel": {
-                    "id": new_channel.id,
-                    "name": new_channel.name,
-                    "channel_code": new_channel.channel_code,
-                    "owner_id": owner_user_id,
-                    "owner_username": owner.username
-                }
-            }
-
-        except Exception as e:
-            self.session.rollback()
-            logger.error(f"Error creating channel: {e}")
-            return {
-                "success": False,
-                "message": f"Error creating channel: {str(e)}"
-            }
 
     async def _add_user_to_channel(self, user_id: int, channel_id: int,
                                    is_moderator: bool = False, is_owner: bool = False) -> bool:
