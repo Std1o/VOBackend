@@ -44,8 +44,7 @@ class ChannelsService:
             is_moderator=True,
             is_owner=True
         )
-        db_participant: tables.Participants = participant
-        self.session.add(db_participant)
+        self.session.add(participant)
         self.session.commit()
         logger.info(f"Created channel: {new_channel.id}")
         channel = Channel(name=new_channel.name, id=new_channel.id, channel_code=new_channel.channel_code,
