@@ -545,24 +545,44 @@ class RadioConnectionManager:
 
     async def _broadcast_audio(self, channel_id: int, sender_id: str, audio_data: bytes):
         """Трансляция аудио всем в канале, кроме отправителя"""
+        if channel_id not in self.active_channels:
+            return
+
         tasks = []
 
-        if channel_id in self.active_channels:
-            for user_id, user in self.active_channels[channel_id].items():
-                if user_id != sender_id:
-                    try:
-                        tasks.append(user.websocket.send_bytes(audio_data))
-                    except Exception as e:
-                        logger.error(f"Ошибка отправки аудио {user.username}: {e}")
-                        asyncio.create_task(self.disconnect_user(user_id, channel_id))
+        for user_id, user in self.active_channels[channel_id].items():
+            if user_id == sender_id:
+                continue
+
+            # Проверяем, нужна ли этому пользователю "подготовка" аудио
+            if not hasattr(user, 'audio_initialized'):
+                user.audio_initialized = False
+
+            if not user.audio_initialized:
+                # Отправляем 3 "тихих" пакета для инициализации аудио системы
+                silent_packet = bytes([0] * 1024)  # 1KB тишины
+
+                try:
+                    # Отправляем подготовительные пакеты
+                    for _ in range(3):
+                        await user.websocket.send_bytes(silent_packet)
+
+                    user.audio_initialized = True
+                    logger.debug(f"Отправлены подготовительные пакеты для {user.username}")
+                except Exception as e:
+                    logger.error(f"Ошибка отправки подготовительных пакетов {user.username}: {e}")
+                    continue
+
+            # Отправляем реальное аудио
+            try:
+                tasks.append(user.websocket.send_bytes(audio_data))
+            except Exception as e:
+                logger.error(f"Ошибка отправки аудио {user.username}: {e}")
+                asyncio.create_task(self.disconnect_user(user_id, channel_id))
 
         # Параллельная отправка
         if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            # Логируем ошибки
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.debug(f"Ошибка при отправке аудио: {result}")
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def get_channel_status(self, channel_id: int) -> Optional[RadioStatus]:
         """Получение текущего статуса канала"""
