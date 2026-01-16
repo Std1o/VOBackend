@@ -164,8 +164,8 @@ async def api_delete_channel(
 
 # ========== REST API endpoints для статуса и пользователей ==========
 
-@router.get("/status/{channel_id}")
-async def api_get_status(
+@router.get("/connected_users/{channel_id}")
+async def get_connected_users(
         channel_id: int,
         radio_manager: RadioConnectionManager = Depends(get_radio_manager)
 ):
@@ -174,9 +174,7 @@ async def api_get_status(
     if not status:
         raise HTTPException(status_code=404, detail="Channel not found or empty")
 
-    return {
-        "connected_usernames": status.connected_usernames,
-    }
+    return status.connected_usernames
 
 
 @router.get("/api/channel/{channel_id}/users")

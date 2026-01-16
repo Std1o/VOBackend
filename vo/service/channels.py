@@ -51,7 +51,7 @@ class ChannelsService:
                           participants=self.get_participants(new_channel.id))
         return channel
 
-    def get_channels(self, user_id: int) -> List[Channel]:
+    async def get_channels(self, user_id: int) -> List[Channel]:
         channels = self.session.query(tables.Channel).join(tables.Participants).filter(
             tables.Channel.id == tables.Participants.channel_id,
             tables.Participants.user_id == user_id
@@ -61,7 +61,7 @@ class ChannelsService:
             channel.participants = self.get_participants(channel.id)
         return channels
 
-    def join(self, user_id: int, channel_code: str) -> Channel:
+    async def join(self, user_id: int, channel_code: str) -> Channel:
         course = self.get_channel_by_code(channel_code)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
