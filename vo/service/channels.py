@@ -139,3 +139,15 @@ class ChannelsService:
         self.session.delete(participant)
         self.session.commit()
         return self.get_participants(channel_id)
+
+    def get_black_list_item(self, participant_id: int, channel_id) -> tables.BlackList:
+        statement = select(tables.BlackList).filter_by(user_id=participant_id, channel_id=channel_id)
+        return self.session.execute(statement).scalars().first()
+
+    async def remove_from_black_list(self, user_id, participant_id: int, channel_id: int):
+        self.check_accessibility(user_id, channel_id)
+        black_list = self.get_black_list_item(participant_id, channel_id)
+        logger.info(f"Created channel: {black_list}")
+        self.session.delete(black_list)
+        self.session.commit()
+        return await self.get_black_list(channel_id)

@@ -15,7 +15,17 @@ async def delete_participant(channel_id: int, participant_id: int,
                        user: User = Depends(get_current_user), service: ChannelsService = Depends()):
     return await service.delete_participant(user.id, participant_id, channel_id)
 
+@router.get('/black_list', response_model=List[BlackList])
+async def get_black_list(channel_id: int,
+                       user: User = Depends(get_current_user), service: ChannelsService = Depends()):
+    return await service.get_black_list(channel_id)
+
 @router.post('/black_list', response_model=List[BlackList])
 async def add_to_black_list(channel_id: int, participant_id: int,
                        user: User = Depends(get_current_user), service: ChannelsService = Depends()):
     return await service.add_to_black_list(participant_id, channel_id)
+
+@router.delete('/black_list', response_model=List[ChannelUsers])
+async def remove_from_black_list(channel_id: int, participant_id: int,
+                       user: User = Depends(get_current_user), service: ChannelsService = Depends()):
+    return await service.remove_from_black_list(user.id, participant_id, channel_id)
