@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from vo import tables
+from vo import tables, constants
 from vo.database import get_session
 from vo.model.channel import Channel, ChannelUsers, Participants, BaseChannel, ChannelCreate
 
@@ -28,6 +28,11 @@ def generate_channel_code() -> str:
 class ChannelsService:
     def __init__(self, session: Session = Depends(get_session)):
         self.session = session
+
+    def check_accessibility(self, user_id, channel_id: int):
+        participant = self.get_participant(user_id, channel_id)
+        if not participant.is_owner:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=constants.ACCESS_ERROR)
 
     async def create(self, user_id: int, channel_data: BaseChannel) -> Channel:
         new_channel = tables.Channel(name=channel_data.name, channel_code=generate_channel_code())
@@ -107,3 +112,14 @@ class ChannelsService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         course.participants = self.get_participants(course.id)
         return course
+
+    def get_participant(self, participant_id: int, channel_id) -> tables.Participants:
+        statement = select(tables.Participants).filter_by(user_id=participant_id, channel_id=channel_id)
+        return self.session.execute(statement).scalars().first()
+
+    async def delete_participant(self, user_id, participant_id: int, channel_id: int):
+        self.check_accessibility(user_id, channel_id)
+        participant = self.get_participant(participant_id, channel_id)
+        self.session.delete(participant)
+        self.session.commit()
+        return self.get_participants(channel_id)
