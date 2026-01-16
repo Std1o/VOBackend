@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from vo import tables, constants
 from vo.database import get_session
+from vo.model.black_list import BlackList
 from vo.model.channel import Channel, ChannelUsers, Participants, BaseChannel, ChannelCreate
 
 logging.basicConfig(
@@ -56,6 +57,19 @@ class ChannelsService:
                           participants=self.get_participants(new_channel.id))
         return channel
 
+    async def get_black_list(self, channel_id: int) -> List[BlackList]:
+        statement = select(tables.BlackList).filter_by(channel_id=channel_id)
+        return self.session.execute(statement).scalars().all()
+
+    async def add_to_black_list(self, participant_id: int, channel_id: int) -> List[BlackList]:
+        participant = tables.BlackList(
+            user_id=participant_id,
+            channel_id=channel_id,
+        )
+        self.session.add(participant)
+        self.session.commit()
+        return await self.get_black_list(channel_id)
+
     async def get_channels(self, user_id: int) -> List[Channel]:
         channels = self.session.query(tables.Channel).join(tables.Participants).filter(
             tables.Channel.id == tables.Participants.channel_id,
@@ -64,6 +78,7 @@ class ChannelsService:
         for channel in channels:
             logger.info(f"Error deleting channel: {channel}")
             channel.participants = self.get_participants(channel.id)
+            channel.black_list = await self.get_black_list(channel.id)
         return channels
 
     async def join(self, user_id: int, channel_code: str) -> Channel:
@@ -76,7 +91,7 @@ class ChannelsService:
         participants = Participants(user_id=user_id, channel_id=channel_id)
         self.session.add(tables.Participants(**participants.dict()))
         self.session.commit()
-        return self._get(user_id, channel_id)
+        return await self._get(user_id, channel_id)
 
     def get_participants(self, channel_id: int) -> List[ChannelUsers]:
         users = self.session.query(
@@ -103,15 +118,16 @@ class ChannelsService:
         statement = select(tables.Participants.user_id).filter_by(channel_id=channel_id)
         return self.session.execute(statement).scalars().all()
 
-    def _get(self, user_id: int, channel_id: int) -> Channel:
-        course = self.session.query(tables.Channel).join(tables.Participants).filter(
+    async def _get(self, user_id: int, channel_id: int) -> Channel:
+        channel = self.session.query(tables.Channel).join(tables.Participants).filter(
             tables.Channel.id == channel_id,
             tables.Participants.user_id == user_id
         ).first()
-        if not course:
+        if not channel:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-        course.participants = self.get_participants(course.id)
-        return course
+        channel.participants = self.get_participants(channel.id)
+        channel.black_list = await self.get_black_list(channel.id)
+        return channel
 
     def get_participant(self, participant_id: int, channel_id) -> tables.Participants:
         statement = select(tables.Participants).filter_by(user_id=participant_id, channel_id=channel_id)

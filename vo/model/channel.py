@@ -2,6 +2,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import random
 from .auth import User, BaseUser
+from .black_list import BlackList
 
 
 class BaseChannel(BaseModel):
@@ -22,6 +23,7 @@ class Channel(BaseChannel):
     id: int
     channel_code: str
     participants: List[ChannelUsers]
+    black_list: List[BlackList]
 
     class Config:
         from_attributes = True
