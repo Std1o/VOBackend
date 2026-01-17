@@ -21,7 +21,7 @@ class ChatService:
         self.session = session
 
     async def get_messages(self, channel_id: int) -> dict:
-        statement = select(tables.ChatMessage).filter_by(channel_id=channel_id).order_by("id")
+        statement = select(tables.ChatMessage).filter_by(channel_id=channel_id)
         db_messages = self.session.execute(statement).scalars().all()
         messages = []
         for msg in db_messages:
@@ -35,7 +35,7 @@ class ChatService:
                 "time": msg.time
             })
 
-        return {"messages": messages}
+        return {"messages": sorted(messages, key=lambda x: x["time"])}
 
     async def create_message(self, base_message: BaseMessage) -> dict:
         current_time = datetime.now()
