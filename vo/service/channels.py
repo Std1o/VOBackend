@@ -54,7 +54,7 @@ class ChannelsService:
         self.session.commit()
         logger.info(f"Created channel: {new_channel.id}")
         channel = Channel(name=new_channel.name, id=new_channel.id, channel_code=new_channel.channel_code,
-                          participants=self.get_participants(new_channel.id))
+                          participants=self.get_participants(new_channel.id), black_list=[])
         return channel
 
     async def get_black_list(self, channel_id: int) -> List[BlackList]:

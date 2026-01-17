@@ -1,4 +1,7 @@
+import uuid
+
 import sqlalchemy as sa
+from sqlalchemy import DateTime
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -32,3 +35,14 @@ class BlackList(Base):
 
     user_id = sa.Column(sa.Integer, sa.ForeignKey(User.id), primary_key=True)
     channel_id = sa.Column(sa.Integer, sa.ForeignKey(Channel.id, ondelete='CASCADE'), primary_key=True)
+
+class ChatMessage(Base):
+    __tablename__ = "chat"
+
+    id = sa.Column(sa.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    channel_id = sa.Column(sa.String, nullable=False, index=True)
+    user_id = sa.Column(sa.Integer, nullable=False)
+    username = sa.Column(sa.String, nullable=False)
+    content = sa.Column(sa.Text, nullable=False)
+    image_url = sa.Column(sa.String)
+    time = sa.Column(sa.String)
