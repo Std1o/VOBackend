@@ -24,12 +24,12 @@ async def get_results_via_websocket(websocket: WebSocket,
         while True:
             # Получаем параметры запроса от клиента
             params_data = await websocket.receive_json()
-            if params_data['command'] == "get":
+            if params_data.get('command') == "get":
                 messages = await service.get_messages(channel_id)
                 await websocket.send_json(messages)
             else:
                 params = BaseMessage(**params_data)
-                await websocket.send_json(service.create_message(params))
+                await websocket.send_json(await service.create_message(params))
     except WebSocketDisconnect:
         print(f"WebSocket connection closed for course_id={channel_id}.")
     except Exception as e:

@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic import BaseModel
 
 
@@ -12,8 +14,17 @@ class BaseMessage(BaseModel):
         from_attributes = True
 
 class Message(BaseMessage):
-    id: int
+    id: str
     time: str
+
+    class Config:
+        from_attributes = True
 
 class MessagesRequest(BaseModel):
     command: str
+
+class MessagesResponse(BaseModel):
+    messages: List[Message]
+
+    class Config:
+        from_attributes = True
