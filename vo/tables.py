@@ -13,6 +13,7 @@ class User(Base):
     phone = sa.Column(sa.Text, unique=True)
     username = sa.Column(sa.Text)
     password_hash = sa.Column(sa.Text)
+    premium = sa.Column(sa.Date)
 
 class Channel(Base):
     __tablename__ = 'channel'
@@ -46,3 +47,11 @@ class ChatMessage(Base):
     content = sa.Column(sa.Text, nullable=False)
     image_url = sa.Column(sa.String)
     time = sa.Column(sa.String)
+
+class Tickets(Base):
+    __tablename__ = 'tickets'
+
+    user_id = sa.Column(sa.Integer, sa.ForeignKey(User.id), primary_key=True)
+    username = sa.Column(sa.String, nullable=False)
+    phone = sa.Column(sa.Text)
+    image_url = sa.Column(sa.String)

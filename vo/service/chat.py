@@ -24,7 +24,10 @@ class ChatService:
         statement = select(tables.ChatMessage).filter_by(channel_id=channel_id)
         db_messages = self.session.execute(statement).scalars().all()
         messages = []
+        images_count = 0
         for msg in db_messages:
+            if msg.image_url:
+                images_count += 1
             messages.append({
                 "id": msg.id,
                 "channel_id": msg.channel_id,
@@ -35,7 +38,7 @@ class ChatService:
                 "time": msg.time
             })
 
-        return {"messages": sorted(messages, key=lambda x: x["time"])}
+        return {"messages": sorted(messages, key=lambda x: datetime.strptime(x["time"], '%d.%m.%Y %H:%M')), "images_count": images_count}
 
     async def create_message(self, base_message: BaseMessage) -> dict:
         current_time = datetime.now()
@@ -46,7 +49,7 @@ class ChatService:
             username=base_message.username,
             content=base_message.content,
             image_url=base_message.image_url,
-            time=str(current_time.strftime('%H:%M'))
+            time=str(current_time.strftime('%d.%m.%Y %H:%M'))
         )
         self.session.add(new_message)
         self.session.commit()

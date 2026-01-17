@@ -15,3 +15,6 @@ class MessageType(str, Enum):
     PONG = "pong"
     ERROR = "error"
     STATUS = "status"
+    RECORDING_STARTED = "recording_started"
+    RECORDING_STOPPED = "recording_stopped"
+    RECORDING_STATUS = "recording_status"

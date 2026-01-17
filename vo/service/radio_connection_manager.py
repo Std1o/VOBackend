@@ -1,20 +1,19 @@
 import asyncio
+import json
 import logging
-import random
 import uuid
+from collections import defaultdict
 from datetime import datetime
 from typing import Dict, Optional, List
-from collections import defaultdict
+
+from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
 from vo.model.message_type import MessageType
 from vo.model.radio_status import RadioStatus
 from vo.model.user import User
-from fastapi import WebSocket, Depends
-import json
-
-from ..database import get_session
 from ..tables import Channel, User as DBUser, Participants
+from .radio_recorder import RadioRecorder
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,242 +30,11 @@ class RadioConnectionManager:
         self.waiting_queues: Dict[int, List[str]] = defaultdict(list)
         self._lock = asyncio.Lock()
         self._db_lock = asyncio.Lock()
+        self.recorder = RadioRecorder(records_dir="records")
 
     def set_session(self, session: Session):
         """Устанавливаем сессию БД (вызывается при каждом запросе)"""
         self.session = session
-
-    # ========== Методы для работы с каналами ==========
-
-    async def _add_user_to_channel(self, user_id: int, channel_id: int,
-                                   is_moderator: bool = False, is_owner: bool = False) -> bool:
-        """Добавление пользователя в канал по ID пользователя"""
-        # Находим канал
-        channel = self.session.query(Channel).filter(Channel.id == channel_id).first()
-        if not channel:
-            return False
-
-        # Находим пользователя
-        user = self.session.query(DBUser).filter(DBUser.id == user_id).first()
-        if not user:
-            return False
-
-        # Проверяем, не является ли пользователь уже участником
-        existing_participant = self.session.query(Participants).filter(
-            Participants.user_id == user_id,
-            Participants.channel_id == channel_id
-        ).first()
-
-        if existing_participant:
-            # Обновляем права, если нужно
-            if is_owner:
-                existing_participant.is_owner = True
-            if is_moderator:
-                existing_participant.is_moderator = True
-            self.session.commit()
-        else:
-            # Добавляем как нового участника
-            participant = Participants(
-                user_id=user_id,
-                channel_id=channel_id,
-                is_moderator=is_moderator,
-                is_owner=is_owner
-            )
-            self.session.add(participant)
-            self.session.commit()
-
-        return True
-
-    async def add_user_to_channel(self, user_id: int, channel_id: int) -> Dict:
-        """Добавление пользователя в существующий канал по ID пользователя"""
-        success = await self._add_user_to_channel(user_id, channel_id)
-
-        if success:
-            user = self.session.query(DBUser).filter(DBUser.id == user_id).first()
-            return {
-                "success": True,
-                "message": f"User {user.username if user else user_id} added to channel {channel_id}"
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Failed to add user {user_id} to channel {channel_id}"
-            }
-
-    async def remove_user_from_channel(self, user_id: int, channel_id: int) -> Dict:
-        """Удаление пользователя из канала по ID пользователя"""
-        try:
-            # Находим участника
-            participant = self.session.query(Participants).filter(
-                Participants.user_id == user_id,
-                Participants.channel_id == channel_id
-            ).first()
-
-            if not participant:
-                return {
-                    "success": False,
-                    "message": f"User {user_id} is not a participant of channel {channel_id}"
-                }
-
-            # Если пользователь онлайн в этом канале, отключаем его
-            if channel_id in self.active_channels:
-                for ws_user_id, user_obj in list(self.active_channels[channel_id].items()):
-                    # Находим username по user_id из БД
-                    user = self.session.query(DBUser).filter(DBUser.id == user_id).first()
-                    if user and user_obj.username == user.username:
-                        await self.disconnect_user(ws_user_id, channel_id)
-                        break
-
-            # Удаляем из БД
-            self.session.delete(participant)
-            self.session.commit()
-
-            return {
-                "success": True,
-                "message": f"User {user_id} removed from channel {channel_id}"
-            }
-
-        except Exception as e:
-            self.session.rollback()
-            logger.error(f"Error removing user from channel: {e}")
-            return {
-                "success": False,
-                "message": f"Error removing user: {str(e)}"
-            }
-
-    async def get_channel_info(self, channel_id: int) -> Optional[Dict]:
-        """Получение информации о канале"""
-        channel = self.session.query(Channel).filter(Channel.id == channel_id).first()
-        if not channel:
-            return None
-
-        # Получаем список участников
-        participants = self.session.query(Participants).filter(
-            Participants.channel_id == channel_id
-        ).join(DBUser, Participants.user_id == DBUser.id).all()
-
-        participants_info = []
-        for p in participants:
-            user = self.session.query(DBUser).filter(DBUser.id == p.user_id).first()
-            participants_info.append({
-                "user_id": p.user_id,
-                "username": user.username if user else "Unknown",
-                "is_moderator": p.is_moderator,
-                "is_owner": p.is_owner
-            })
-
-        return {
-            "id": channel.id,
-            "name": channel.name,
-            "channel_code": channel.channel_code,
-            "participants": participants_info,
-            "participant_count": len(participants_info),
-            "is_active": channel_id in self.active_channels,
-            "active_users": len(self.active_channels.get(channel_id, {}))
-        }
-
-    async def list_channels(self, include_participants: bool = False) -> List[Dict]:
-        """Получение списка всех каналов"""
-        channels = self.session.query(Channel).all()
-
-        result = []
-        for channel in channels:
-            channel_info = {
-                "id": channel.id,
-                "name": channel.name,
-                "channel_code": channel.channel_code,
-                "is_active": channel.id in self.active_channels,
-                "active_users": len(self.active_channels.get(channel.id, {}))
-            }
-
-            if include_participants:
-                participants = self.session.query(Participants).filter(
-                    Participants.channel_id == channel.id
-                ).count()
-                channel_info["participant_count"] = participants
-
-            result.append(channel_info)
-
-        return result
-
-    async def delete_channel(self, channel_id: int, requesting_user_id: int) -> Dict:
-        """Удаление канала (только владельцем)"""
-        try:
-            # Находим канал
-            channel = self.session.query(Channel).filter(Channel.id == channel_id).first()
-            if not channel:
-                return {
-                    "success": False,
-                    "message": f"Channel {channel_id} not found"
-                }
-
-            # Проверяем права доступа (только владелец может удалить канал)
-            participant = self.session.query(Participants).filter(
-                Participants.user_id == requesting_user_id,
-                Participants.channel_id == channel_id,
-                Participants.is_owner == True
-            ).first()
-
-            if not participant:
-                return {
-                    "success": False,
-                    "message": "Only channel owner can delete the channel"
-                }
-
-            # Отключаем всех активных пользователей
-            if channel_id in self.active_channels:
-                user_ids = list(self.active_channels[channel_id].keys())
-                for user_id in user_ids:
-                    await self.disconnect_user(user_id, channel_id)
-
-            # Удаляем канал (каскадно удалятся и участники)
-            self.session.delete(channel)
-            self.session.commit()
-
-            # Очищаем данные в памяти
-            if channel_id in self.active_channels:
-                del self.active_channels[channel_id]
-            if channel_id in self.current_speakers:
-                del self.current_speakers[channel_id]
-            if channel_id in self.waiting_queues:
-                del self.waiting_queues[channel_id]
-
-            logger.info(f"🗑️ Удален канал: {channel.name} (ID: {channel_id}) владельцем {requesting_user_id}")
-
-            return {
-                "success": True,
-                "message": f"Channel {channel.name} deleted successfully"
-            }
-
-        except Exception as e:
-            self.session.rollback()
-            logger.error(f"Error deleting channel: {e}")
-            return {
-                "success": False,
-                "message": f"Error deleting channel: {str(e)}"
-            }
-
-    async def get_user_channels(self, user_id: int) -> List[Dict]:
-        """Получение списка каналов, в которых состоит пользователь"""
-        participants = self.session.query(Participants).filter(
-            Participants.user_id == user_id
-        ).all()
-
-        channels_info = []
-        for p in participants:
-            channel = self.session.query(Channel).filter(Channel.id == p.channel_id).first()
-            if channel:
-                channels_info.append({
-                    "id": channel.id,
-                    "name": channel.name,
-                    "channel_code": channel.channel_code,
-                    "is_owner": p.is_owner,
-                    "is_moderator": p.is_moderator,
-                    "is_active": channel.id in self.active_channels,
-                    "active_users": len(self.active_channels.get(channel.id, {}))
-                })
-
-        return channels_info
 
     # ========== Основные методы для подключения пользователей ==========
 
@@ -353,6 +121,8 @@ class RadioConnectionManager:
 
         # Отправляем текущий статус канала
         await self._send_status_to_user(channel_id, ws_user_id)
+
+        await self._send_recording_status_to_user(channel_id, ws_user_id)
 
         # Уведомляем всех в канале о новом пользователе
         await self._broadcast_excluding(channel_id, ws_user_id, {
@@ -535,10 +305,17 @@ class RadioConnectionManager:
 
     async def process_audio_chunk(self, ws_user_id: str, channel_id: int, audio_data: bytes):
         """Обработка аудио чанка в реальном времени"""
-        # Быстрая проверка без блокировки
         if self.current_speakers.get(channel_id) != ws_user_id:
             logger.warning(f"⚠️ Попытка передачи без права: {ws_user_id} в канале {channel_id}")
             return
+
+        # Получаем имя говорящего
+        speaker_name = None
+        if channel_id in self.active_channels and ws_user_id in self.active_channels[channel_id]:
+            speaker_name = self.active_channels[channel_id][ws_user_id].username
+
+        # Если идет запись канала - сохраняем аудио
+        await self.recorder.record_audio_chunk(channel_id, audio_data, ws_user_id, speaker_name)
 
         # Трансляция всем остальным пользователям в канале
         await self._broadcast_audio(channel_id, ws_user_id, audio_data)
@@ -624,6 +401,15 @@ class RadioConnectionManager:
                 "timestamp": status.server_time.isoformat()
             })
 
+    async def _send_recording_status_to_user(self, channel_id: int, user_id: str):
+        """Отправка статуса конкретному пользователю в канале"""
+        status =  self.recorder.get_recording_status(channel_id)
+        if status:
+            await self._send_to_user(channel_id, user_id, {
+                "type": MessageType.RECORDING_STATUS,
+                "recording_status": status,
+            })
+
     async def _send_to_user(self, channel_id: int, user_id: str, message: Dict):
         """Отправка сообщения конкретному пользователю в канале"""
         if channel_id in self.active_channels and user_id in self.active_channels[channel_id]:
@@ -671,3 +457,61 @@ class RadioConnectionManager:
 
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def start_recording(self, channel_id: int, started_by: str) -> Dict:
+        """Начать запись эфира в канале"""
+        if channel_id not in self.active_channels:
+            return {
+                "success": False,
+                "message": f"Channel {channel_id} is empty or doesn't exist"
+            }
+
+        await self._broadcast_to_channel(channel_id, {
+            "type": MessageType.RECORDING_STARTED,
+            "channel_id": channel_id,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        result = await self.recorder.start_recording(channel_id, started_by)
+
+        if result["success"]:
+            # Уведомляем всех в канале о начале записи
+            await self._broadcast_to_channel(channel_id, {
+                "type": "recording_started",  # Добавить в MessageType
+                "recording_id": result["recording_id"],
+                "started_by": started_by,
+                "filename": result["filename"],
+                "timestamp": datetime.now().isoformat()
+            })
+
+        return result
+
+    async def stop_recording(self, channel_id: int, stopped_by: str) -> Dict:
+        """Остановить запись эфира в канале"""
+        result = await self.recorder.stop_recording(channel_id, stopped_by)
+
+        if result["success"]:
+            await self._broadcast_to_channel(channel_id, {
+                "type": MessageType.RECORDING_STOPPED,
+                "channel_id": channel_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            # Уведомляем всех в канале об окончании записи
+            await self._broadcast_to_channel(channel_id, {
+                "type": "recording_stopped",  # Добавить в MessageType
+                "filename": result["filename"],
+                "filepath": result.get("filepath"),
+                "duration_seconds": result.get("duration_seconds", 0),
+                "stopped_by": stopped_by,
+                "timestamp": datetime.now().isoformat()
+            })
+
+        return result
+
+    async def get_recording_status(self, channel_id: int) -> Dict:
+        """Получить статус записи для канала"""
+        return self.recorder.get_recording_status(channel_id)
+
+    async def get_recordings_list(self, channel_id: Optional[int] = None) -> List[Dict]:
+        """Получить список всех записей"""
+        return await self.recorder.get_recordings_list(channel_id)
