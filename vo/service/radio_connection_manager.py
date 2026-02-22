@@ -230,19 +230,16 @@ class RadioConnectionManager:
     async def release_speak(self, ws_user_id: str, channel_id: int) -> Dict:
         """Освобождение права говорить в канале"""
         async with self._lock:
+            # ВСЕГДА удаляем из очереди, где бы пользователь ни был
+            if ws_user_id in self.waiting_queues[channel_id]:
+                self.waiting_queues[channel_id].remove(ws_user_id)
+                logger.info(f"🗑️ Удален из очереди: {ws_user_id}")
+
             if self.current_speakers[channel_id] != ws_user_id:
-                # Если пользователь в очереди - удаляем
-                if ws_user_id in self.waiting_queues[channel_id]:
-                    self.waiting_queues[channel_id].remove(ws_user_id)
-                    return {
-                        "type": MessageType.SPEAK_RELEASED,
-                        "message": "Removed from queue",
-                        "channel_id": channel_id,
-                        "timestamp": datetime.now().isoformat()
-                    }
                 return {
-                    "type": MessageType.ERROR,
-                    "message": "You are not the current speaker",
+                    "type": MessageType.SPEAK_RELEASED,
+                    "message": "Removed from queue",
+                    "channel_id": channel_id,
                     "timestamp": datetime.now().isoformat()
                 }
 
@@ -280,28 +277,39 @@ class RadioConnectionManager:
         # Даем право следующему в очереди
         if self.waiting_queues[channel_id]:
             next_speaker_id = self.waiting_queues[channel_id].pop(0)
-            self.current_speakers[channel_id] = next_speaker_id
-            self.active_channels[channel_id][next_speaker_id].is_speaking = True
 
-            next_speaker_name = self.active_channels[channel_id][next_speaker_id].username
-            logger.info(f"➡️ ТЕПЕРЬ ГОВОРИТ в канале {channel_id}: {next_speaker_name}")
+            # Проверяем, что следующий не равен старому говорящему
+            if next_speaker_id == old_speaker_id:
+                logger.warning(f"⚠️ Старый говорящий {old_speaker_id} всё ещё в очереди! Пропускаем.")
+                # Берем следующего, если есть
+                if self.waiting_queues[channel_id]:
+                    next_speaker_id = self.waiting_queues[channel_id].pop(0)
+                else:
+                    next_speaker_id = None
 
-            # Уведомляем всех о новом говорящем
-            await self._broadcast_to_channel(channel_id, {
-                "type": MessageType.SPEAKER_CHANGED,
-                "speaker_id": next_speaker_id,
-                "speaker_name": next_speaker_name,
-                "channel_id": channel_id,
-                "timestamp": datetime.now().isoformat()
-            })
+            if next_speaker_id:
+                self.current_speakers[channel_id] = next_speaker_id
+                self.active_channels[channel_id][next_speaker_id].is_speaking = True
 
-            # Уведомляем нового говорящего
-            await self._send_to_user(channel_id, next_speaker_id, {
-                "type": MessageType.SPEAK_GRANTED,
-                "message": "You can speak now",
-                "channel_id": channel_id,
-                "timestamp": datetime.now().isoformat()
-            })
+                next_speaker_name = self.active_channels[channel_id][next_speaker_id].username
+                logger.info(f"➡️ ТЕПЕРЬ ГОВОРИТ в канале {channel_id}: {next_speaker_name}")
+
+                # Уведомляем всех о новом говорящем
+                await self._broadcast_to_channel(channel_id, {
+                    "type": MessageType.SPEAKER_CHANGED,
+                    "speaker_id": next_speaker_id,
+                    "speaker_name": next_speaker_name,
+                    "channel_id": channel_id,
+                    "timestamp": datetime.now().isoformat()
+                })
+
+                # Уведомляем нового говорящего
+                await self._send_to_user(channel_id, next_speaker_id, {
+                    "type": MessageType.SPEAK_GRANTED,
+                    "message": "You can speak now",
+                    "channel_id": channel_id,
+                    "timestamp": datetime.now().isoformat()
+                })
 
     async def process_audio_chunk(self, ws_user_id: str, channel_id: int, audio_data: bytes):
         """Обработка аудио чанка в реальном времени"""
