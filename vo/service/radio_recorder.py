@@ -209,8 +209,10 @@ class RecordingSession:
         return len(self.audio_buffer) / bytes_per_second
 
     async def finalize(self) -> Dict:
-        """Завершить запись и сохранить в MP3 файл с использованием PyAV"""
+        """Завершить запись и сохранить в WAV файл"""
         async with self._lock:
+            logger.info(f"ФИНАЛИЗАЦИЯ: всего байт={len(self.audio_buffer)}, чанков={self.chunks_received}")
+
             if not self.audio_buffer:
                 return {
                     "success": False,
@@ -219,61 +221,26 @@ class RecordingSession:
                     "channel_id": self.channel_id
                 }
 
-            temp_wav = None
+            # Сохраняем WAV
             try:
-                # Конвертируем байты в numpy array
-                # Предполагаем, что аудио в формате 16-bit PCM
-                audio_array = np.frombuffer(self.audio_buffer, dtype=np.int16)
+                wav_filename = self.filename.replace('.mp3', '.wav')
+                wav_filepath = os.path.join(self.records_dir, wav_filename)
 
-                # Нормализуем до float32 в диапазоне [-1, 1] для PyAV
-                audio_float = audio_array.astype(np.float32) / 32768.0
+                with open(wav_filepath, 'wb') as f:
+                    # Пишем правильный WAV заголовок
+                    f.write(self._create_wav_header(len(self.audio_buffer)))
+                    f.write(self.audio_buffer)
 
-                # Создаем MP3 файл через PyAV
-                container = av.open(self.filepath, 'w', format='mp3')
-
-                # Создаем аудио поток
-                stream = container.add_stream('mp3', rate=self.sample_rate)
-                stream.channels = self.channels
-                stream.layout = 'mono'
-                stream.bit_rate = 128000  # 128 kbps
-
-                # Разбиваем на фреймы для кодирования
-                frame_size = 1024  # размер фрейма для MP3
-
-                for i in range(0, len(audio_float), frame_size):
-                    frame_data = audio_float[i:i + frame_size]
-
-                    # Создаем аудио фрейм
-                    frame = av.AudioFrame.from_ndarray(
-                        frame_data.reshape(1, -1),  # reshape для моно
-                        format='flt',
-                        layout='mono'
-                    )
-                    frame.sample_rate = self.sample_rate
-                    frame.pts = i  # Presentation timestamp
-
-                    # Кодируем фрейм
-                    for packet in stream.encode(frame):
-                        container.mux(packet)
-
-                # Финализируем кодирование
-                for packet in stream.encode():
-                    container.mux(packet)
-
-                container.close()
-
-                # Получаем размер файла
-                file_size = os.path.getsize(self.filepath)
+                file_size = os.path.getsize(wav_filepath)
                 duration = self.get_duration()
 
-                logger.info(
-                    f"✅ Запись сохранена: {self.filepath} ({file_size / 1024 / 1024:.2f} MB, {duration:.1f} сек)")
+                logger.info(f"✅ WAV сохранен: {wav_filepath} ({file_size} байт, {duration:.1f} сек)")
 
                 return {
                     "success": True,
                     "message": "Recording saved successfully",
-                    "filename": self.filename,
-                    "filepath": self.filepath,
+                    "filename": wav_filename,
+                    "filepath": wav_filepath,
                     "file_size_bytes": file_size,
                     "duration_seconds": duration,
                     "chunks_processed": self.chunks_received,
@@ -284,49 +251,19 @@ class RecordingSession:
                 }
 
             except Exception as e:
-                logger.error(f"❌ Ошибка при сохранении MP3: {e}", exc_info=True)
-
-                # Пытаемся сохранить как WAV как запасной вариант
-                try:
-                    wav_filename = self.filename.replace('.mp3', '.wav')
-                    wav_filepath = os.path.join(self.records_dir, wav_filename)
-
-                    # Сохраняем сырые PCM данные с WAV заголовком
-                    with open(wav_filepath, 'wb') as f:
-                        # Пишем WAV заголовок
-                        f.write(self._create_wav_header(len(self.audio_buffer)))
-                        f.write(self.audio_buffer)
-
-                    logger.info(f"⚠️ Сохранено как WAV (запасной вариант): {wav_filepath}")
-
-                    return {
-                        "success": True,
-                        "message": "Recording saved as WAV (fallback)",
-                        "filename": wav_filename,
-                        "filepath": wav_filepath,
-                        "file_size_bytes": os.path.getsize(wav_filepath),
-                        "chunks_processed": self.chunks_received,
-                        "channel_id": self.channel_id,
-                        "recording_id": self.recording_id,
-                        "fallback": True
-                    }
-                except Exception as wav_error:
-                    logger.error(f"❌ Даже WAV не сохранился: {wav_error}")
-
-                    return {
-                        "success": False,
-                        "message": f"Error saving recording: {str(e)}",
-                        "filename": self.filename,
-                        "error": str(e),
-                        "channel_id": self.channel_id
-                    }
+                logger.error(f"❌ Ошибка сохранения WAV: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "message": f"Error saving recording: {str(e)}",
+                    "filename": self.filename,
+                    "channel_id": self.channel_id
+                }
 
     def _create_wav_header(self, data_size: int) -> bytes:
         """Создает заголовок WAV файла для 16-bit PCM моно"""
         sample_rate = self.sample_rate
         bits_per_sample = 16
         channels = self.channels
-
         byte_rate = sample_rate * channels * bits_per_sample // 8
         block_align = channels * bits_per_sample // 8
 
@@ -338,8 +275,8 @@ class RecordingSession:
 
         # fmt subchunk
         header.extend(b'fmt ')
-        header.extend((16).to_bytes(4, 'little'))  # Subchunk size
-        header.extend((1).to_bytes(2, 'little'))  # Audio format (PCM)
+        header.extend((16).to_bytes(4, 'little'))
+        header.extend((1).to_bytes(2, 'little'))  # PCM
         header.extend(channels.to_bytes(2, 'little'))
         header.extend(sample_rate.to_bytes(4, 'little'))
         header.extend(byte_rate.to_bytes(4, 'little'))
