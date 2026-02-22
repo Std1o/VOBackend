@@ -194,6 +194,7 @@ class RadioConnectionManager:
 
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
+                await self.start_recording(channel_id)
 
                 # Уведомляем всех в канале
                 await self._broadcast_to_channel(channel_id, {
@@ -247,6 +248,7 @@ class RadioConnectionManager:
             self.current_speakers[channel_id] = None
             self.active_channels[channel_id][ws_user_id].is_speaking = False
 
+            await self.stop_recording(channel_id)
             await self._handle_speaker_released(channel_id, ws_user_id, "released")
 
             return {
@@ -466,7 +468,7 @@ class RadioConnectionManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def start_recording(self, channel_id: int, started_by: str) -> Dict:
+    async def start_recording(self, channel_id: int) -> Dict:
         """Начать запись эфира в канале"""
         if channel_id not in self.active_channels:
             return {
@@ -480,23 +482,22 @@ class RadioConnectionManager:
             "timestamp": datetime.now().isoformat()
         })
 
-        result = await self.recorder.start_recording(channel_id, started_by)
+        result = await self.recorder.start_recording(channel_id)
 
         if result["success"]:
             # Уведомляем всех в канале о начале записи
             await self._broadcast_to_channel(channel_id, {
                 "type": "recording_started",  # Добавить в MessageType
                 "recording_id": result["recording_id"],
-                "started_by": started_by,
                 "filename": result["filename"],
                 "timestamp": datetime.now().isoformat()
             })
 
         return result
 
-    async def stop_recording(self, channel_id: int, stopped_by: str) -> Dict:
+    async def stop_recording(self, channel_id: int) -> Dict:
         """Остановить запись эфира в канале"""
-        result = await self.recorder.stop_recording(channel_id, stopped_by)
+        result = await self.recorder.stop_recording(channel_id)
 
         if result["success"]:
             await self._broadcast_to_channel(channel_id, {
@@ -510,7 +511,6 @@ class RadioConnectionManager:
                 "filename": result["filename"],
                 "filepath": result.get("filepath"),
                 "duration_seconds": result.get("duration_seconds", 0),
-                "stopped_by": stopped_by,
                 "timestamp": datetime.now().isoformat()
             })
 

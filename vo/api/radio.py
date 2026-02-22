@@ -107,7 +107,7 @@ async def start_recording(
     # Проверяем права (опционально)
     # Только модераторы или владельцы могут записывать
 
-    result = await radio_manager.start_recording(channel_id, current_user.username)
+    result = await radio_manager.start_recording(channel_id)
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -122,7 +122,7 @@ async def stop_recording(
         radio_manager: RadioConnectionManager = Depends(get_radio_manager)
 ):
     """Остановить запись эфира в канале"""
-    result = await radio_manager.stop_recording(channel_id, current_user.username)
+    result = await radio_manager.stop_recording(channel_id)
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])

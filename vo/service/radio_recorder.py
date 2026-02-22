@@ -25,7 +25,7 @@ class RadioRecorder:
             os.makedirs(self.records_dir)
             logger.info(f"✅ Создана директория для записей: {self.records_dir}")
 
-    async def start_recording(self, channel_id: int, started_by: str) -> Dict:
+    async def start_recording(self, channel_id: int) -> Dict:
         """Начать запись эфира в канале"""
         if channel_id in self.active_recordings:
             return {
@@ -36,10 +36,10 @@ class RadioRecorder:
 
         try:
             # Создаем новую сессию записи
-            session = RecordingSession(channel_id, started_by, self.records_dir)
+            session = RecordingSession(channel_id, self.records_dir)
             self.active_recordings[channel_id] = session
 
-            logger.info(f"🎙️ НАЧАТА ЗАПИСЬ в канале {channel_id} (инициатор: {started_by})")
+            logger.info(f"🎙️ НАЧАТА ЗАПИСЬ в канале {channel_id}")
 
             return {
                 "success": True,
@@ -48,7 +48,6 @@ class RadioRecorder:
                 "recording_id": session.recording_id,
                 "filename": session.filename,
                 "start_time": session.start_time.isoformat(),
-                "started_by": started_by
             }
         except Exception as e:
             logger.error(f"❌ Ошибка при старте записи: {e}")
@@ -58,7 +57,7 @@ class RadioRecorder:
                 "channel_id": channel_id
             }
 
-    async def stop_recording(self, channel_id: int, stopped_by: str) -> Dict:
+    async def stop_recording(self, channel_id: int) -> Dict:
         """Остановить запись эфира в канале"""
         if channel_id not in self.active_recordings:
             return {
@@ -76,8 +75,7 @@ class RadioRecorder:
             if result["success"]:
                 # Удаляем из активных записей
                 del self.active_recordings[channel_id]
-                result["stopped_by"] = stopped_by
-                logger.info(f"⏹️ ОСТАНОВЛЕНА ЗАПИСЬ в канале {channel_id} (инициатор: {stopped_by})")
+                logger.info(f"⏹️ ОСТАНОВЛЕНА ЗАПИСЬ в канале {channel_id}")
             else:
                 logger.error(f"❌ Ошибка при сохранении записи канала {channel_id}: {result.get('error')}")
 
@@ -116,7 +114,6 @@ class RadioRecorder:
             "duration_seconds": session.get_duration(),
             "chunks_received": session.chunks_received,
             "speakers": list(session.speakers),
-            "started_by": session.started_by
         }
 
     async def get_recordings_list(self, channel_id: Optional[int] = None) -> List[Dict]:
@@ -169,9 +166,8 @@ class RadioRecorder:
 class RecordingSession:
     """Класс для хранения данных одной сессии записи"""
 
-    def __init__(self, channel_id: int, started_by: str, records_dir: str):
+    def __init__(self, channel_id: int, records_dir: str):
         self.channel_id = channel_id
-        self.started_by = started_by
         self.records_dir = records_dir
         self.recording_id = str(uuid.uuid4())[:8]
         self.start_time = datetime.now()
