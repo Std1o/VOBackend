@@ -10,7 +10,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
     id = sa.Column(sa.Integer, primary_key=True)
-    phone = sa.Column(sa.Text, unique=True)
+    phone = sa.Column(sa.Text, unique=True, nullable=False)
     username = sa.Column(sa.Text)
     password_hash = sa.Column(sa.Text)
     premium = sa.Column(sa.Date)
