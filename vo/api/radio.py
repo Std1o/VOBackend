@@ -20,16 +20,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 radio_manager = RadioConnectionManager()
+
 
 def get_radio_manager_with_session():
     """Фабрика для получения менеджера с установленной сессией"""
+
     def _get_manager(session: Session = Depends(get_session)):
         # Устанавливаем сессию БД в менеджер
         radio_manager.set_session(session)
         return radio_manager
+
     return _get_manager
+
 
 # Используем эту фабрику в зависимостях
 get_radio_manager = get_radio_manager_with_session()
@@ -122,7 +125,7 @@ async def stop_recording(
         radio_manager: RadioConnectionManager = Depends(get_radio_manager)
 ):
     """Остановить запись эфира в канале"""
-    result = await radio_manager.stop_recording(channel_id)
+    result = await radio_manager.stop_recording(channel_id, current_user.username)
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -179,10 +182,11 @@ async def _handle_client_message(
 ):
     """Обработка сообщений от клиента"""
     message_type = message.get("type")
+    speaker_name = message.get("speaker_name")
 
     if message_type == "speak_request":
         # Запрос на право говорить
-        response = await radio_manager.request_speak(user_id, channel_id)
+        response = await radio_manager.request_speak(user_id, channel_id, speaker_name)
         await radio_manager._send_to_user(channel_id, user_id, response)
 
     elif message_type == "speak_release":

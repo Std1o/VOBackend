@@ -178,7 +178,7 @@ class RadioConnectionManager:
                 "timestamp": datetime.now().isoformat()
             })
 
-    async def request_speak(self, ws_user_id: str, channel_id: int) -> Dict:
+    async def request_speak(self, ws_user_id: str, channel_id: int, speaker_name: str) -> Dict:
         """Запрос на право говорить в канале"""
         async with self._lock:
             if channel_id not in self.active_channels or ws_user_id not in self.active_channels[channel_id]:
@@ -194,7 +194,7 @@ class RadioConnectionManager:
 
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
-                await self.start_recording(channel_id)
+                await self.start_recording(channel_id, speaker_name)
 
                 # Уведомляем всех в канале
                 await self._broadcast_to_channel(channel_id, {
@@ -468,7 +468,7 @@ class RadioConnectionManager:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def start_recording(self, channel_id: int) -> Dict:
+    async def start_recording(self, channel_id: int, speaker_name: str) -> Dict:
         """Начать запись эфира в канале"""
         if channel_id not in self.active_channels:
             return {
@@ -482,7 +482,7 @@ class RadioConnectionManager:
             "timestamp": datetime.now().isoformat()
         })
 
-        result = await self.recorder.start_recording(channel_id)
+        result = await self.recorder.start_recording(channel_id, speaker_name)
 
         if result["success"]:
             # Уведомляем всех в канале о начале записи

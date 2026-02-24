@@ -25,7 +25,7 @@ class RadioRecorder:
             os.makedirs(self.records_dir)
             logger.info(f"✅ Создана директория для записей: {self.records_dir}")
 
-    async def start_recording(self, channel_id: int) -> Dict:
+    async def start_recording(self, channel_id: int, speaker_name: str) -> Dict:
         """Начать запись эфира в канале"""
         if channel_id in self.active_recordings:
             return {
@@ -36,7 +36,7 @@ class RadioRecorder:
 
         try:
             # Создаем новую сессию записи
-            session = RecordingSession(channel_id, self.records_dir)
+            session = RecordingSession(channel_id, self.records_dir, speaker_name)
             self.active_recordings[channel_id] = session
 
             logger.info(f"🎙️ НАЧАТА ЗАПИСЬ в канале {channel_id}")
@@ -166,8 +166,9 @@ class RadioRecorder:
 class RecordingSession:
     """Класс для хранения данных одной сессии записи"""
 
-    def __init__(self, channel_id: int, records_dir: str):
+    def __init__(self, channel_id: int, records_dir: str, speaker_name: str):
         self.channel_id = channel_id
+        self.speaker_name = speaker_name
         self.records_dir = records_dir
         self.recording_id = str(uuid.uuid4())[:8]
         self.start_time = datetime.now()
@@ -181,7 +182,7 @@ class RecordingSession:
 
         # Генерируем имя файла: records/channel_123_20240101_153045_abc123.mp3
         timestamp = self.start_time.strftime("%Y%m%d_%H%M%S")
-        self.filename = f"channel_{channel_id}_{timestamp}_{self.recording_id}.mp3"
+        self.filename = f"channel_{channel_id}_{speaker_name}_{timestamp}.mp3"
         self.filepath = os.path.join(records_dir, self.filename)
 
         # Параметры аудио (предполагаем стандартные)
