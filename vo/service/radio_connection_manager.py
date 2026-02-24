@@ -7,13 +7,16 @@ from datetime import datetime
 from typing import Dict, Optional, List
 
 from fastapi import WebSocket
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vo.model.message_type import MessageType
 from vo.model.radio_status import RadioStatus
 from vo.model.user import User
+from .. import tables
 from ..tables import Channel, User as DBUser, Participants
 from .radio_recorder import RadioRecorder
+from datetime import date
 
 logging.basicConfig(
     level=logging.INFO,
@@ -178,7 +181,11 @@ class RadioConnectionManager:
                 "timestamp": datetime.now().isoformat()
             })
 
-    async def request_speak(self, ws_user_id: str, channel_id: int, speaker_name: str) -> Dict:
+    async def get_user(self, user_id: int) -> tables.User:
+        statement = select(tables.User).filter_by(id=user_id)
+        return self.session.execute(statement).scalars().first()
+
+    async def request_speak(self, ws_user_id: str, user_id: int,  channel_id: int, speaker_name: str) -> Dict:
         """Запрос на право говорить в канале"""
         async with self._lock:
             if channel_id not in self.active_channels or ws_user_id not in self.active_channels[channel_id]:
@@ -194,7 +201,9 @@ class RadioConnectionManager:
 
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
-                await self.start_recording(channel_id, speaker_name)
+                user = await self.get_user(user_id)
+                if user.premium >= date.today():
+                    await self.start_recording(channel_id, speaker_name)
 
                 # Уведомляем всех в канале
                 await self._broadcast_to_channel(channel_id, {

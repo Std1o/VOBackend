@@ -183,10 +183,11 @@ async def _handle_client_message(
     """Обработка сообщений от клиента"""
     message_type = message.get("type")
     speaker_name = message.get("speaker_name")
+    int_user_id = message.get("user_id")
 
     if message_type == "speak_request":
         # Запрос на право говорить
-        response = await radio_manager.request_speak(user_id, channel_id, speaker_name)
+        response = await radio_manager.request_speak(user_id, int_user_id, channel_id, speaker_name)
         await radio_manager._send_to_user(channel_id, user_id, response)
 
     elif message_type == "speak_release":
