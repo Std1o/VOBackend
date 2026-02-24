@@ -20,3 +20,7 @@ def sign_in(form_data: OAuth2PasswordRequestForm = Depends(), service: AuthServi
 @router.get('/user', response_model=User)
 def get_user(user: User = Depends(get_current_user)):
     return user
+
+@router.post('/change_name', response_model=User)
+async def change_name(new_name: str, user: User = Depends(get_current_user), service: AuthService = Depends()):
+    return await service.change_name(user.id, new_name)

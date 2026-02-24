@@ -104,6 +104,10 @@ class AuthService:
         statement = select(tables.User).filter_by(phone=phone)
         return self.session.execute(statement).scalars().first()
 
+    def get_user(self, user_id: int) -> tables.User:
+        statement = select(tables.User).filter_by(id=user_id)
+        return self.session.execute(statement).scalars().first()
+
     def reg(self, user_data: UserCreate) -> PrivateUser:
         if self.get_user_by_phone(user_data.phone):
             raise HTTPException(status_code=418, detail="User with this phone already exists")
@@ -152,3 +156,10 @@ class AuthService:
             return private_user
         except Exception as e:
             raise
+
+
+    async def change_name(self, user_id: int, new_name: str):
+        user = self.get_user(user_id)
+        user.username = new_name
+        self.session.commit()
+        return user
