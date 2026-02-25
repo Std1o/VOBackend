@@ -181,6 +181,10 @@ class RadioConnectionManager:
                 "timestamp": datetime.now().isoformat()
             })
 
+    async def get_channel_owner(self, channel_id: int) -> tables.Participants:
+        statement = select(tables.Participants).filter_by(channel_id=channel_id, is_owner=True)
+        return self.session.execute(statement).scalars().first()
+
     async def get_user(self, user_id: int) -> tables.User:
         statement = select(tables.User).filter_by(id=user_id)
         return self.session.execute(statement).scalars().first()
@@ -201,7 +205,8 @@ class RadioConnectionManager:
 
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
-                user = await self.get_user(user_id)
+                owner = await self.get_channel_owner(user_id)
+                user = await self.get_user(owner.user_id)
                 logger.info(f"Премиум {user.premium}: {date.today()}")
                 logger.info(f"Дата {user.premium >= date.today():}")
                 if user.premium >= date.today():
