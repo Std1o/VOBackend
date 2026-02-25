@@ -4,15 +4,19 @@ import os
 import glob
 import logging
 from datetime import datetime, time, timedelta
+from vo import tables
+from fastapi import Depends
+from vo.database import get_session, Session
 
 logger = logging.getLogger(__name__)
 
 
 class CleanupService:
-    def __init__(self, records_dir: str = "records"):
+    def __init__(self, records_dir: str = "records", session: Session = Depends(get_session)):
         self.records_dir = records_dir
         self.is_running = False
         self._cleanup_task = None
+        self.session = session
 
     async def start(self):
         """Запустить сервис очистки"""
@@ -55,6 +59,7 @@ class CleanupService:
 
                     # Выполняем очистку
                     await self._cleanup_files()
+                    self.delete_all_chat_messages()
 
                 except Exception as e:
                     logger.error(f"❌ Ошибка в цикле очистки: {e}")
@@ -103,6 +108,15 @@ class CleanupService:
 
         except Exception as e:
             logger.error(f"❌ Ошибка при удалении файлов: {e}")
+
+    def delete_all_chat_messages(self):
+        try:
+            self.session.query(tables.ChatMessage).delete()
+            self.session.commit()
+            print("Все сообщения чата успешно удалены")
+        except Exception as e:
+            self.session.rollback()
+            print(f"Ошибка при удалении: {e}")
 
     async def cleanup_now(self):
         """Принудительная очистка (для тестирования)"""
