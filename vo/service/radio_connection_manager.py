@@ -202,6 +202,8 @@ class RadioConnectionManager:
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
                 user = await self.get_user(user_id)
+                logger.info(f"Премиум {user.premium}: {date.today()}")
+                logger.info(f"Дата {user.premium >= date.today():}")
                 if user.premium >= date.today():
                     await self.start_recording(channel_id, speaker_name)
 
