@@ -181,7 +181,7 @@ class RecordingSession:
         self._lock = asyncio.Lock()
 
         # Генерируем имя файла: records/channel_123_20240101_153045_abc123.mp3
-        timestamp = self.start_time.strftime("%Y%m%d_%H%M%S")
+        timestamp = self.start_time.strftime("%d.%m.%Y %H:%M")
         self.filename = f"channel_{channel_id}_{speaker_name}_{timestamp}.mp3"
         self.filepath = os.path.join(records_dir, self.filename)
 
