@@ -145,10 +145,11 @@ async def get_recording_status(
 @router.get("/recordings/list")
 async def list_recordings(
         channel_id: Optional[int] = Query(None, description="Filter by channel ID"),
+        timezone: str = Query('UTC', description="Timezone for displaying times"),  # ТОЛЬКО ДОБАВИТЬ ЭТОТ ПАРАМЕТР
         radio_manager: RadioConnectionManager = Depends(get_radio_manager)
 ):
     """Получить список всех записей"""
-    return await radio_manager.get_recordings_list(channel_id)
+    return await radio_manager.get_recordings_list(timezone, channel_id)  # ТОЛЬКО ПЕРЕДАТЬ timezone
 
 
 @router.get("/recordings/download/{filename}")
@@ -183,11 +184,10 @@ async def _handle_client_message(
     """Обработка сообщений от клиента"""
     message_type = message.get("type")
     speaker_name = message.get("speaker_name")
-    int_user_id = message.get("user_id")
 
     if message_type == "speak_request":
         # Запрос на право говорить
-        response = await radio_manager.request_speak(user_id, int_user_id, channel_id, speaker_name)
+        response = await radio_manager.request_speak(user_id, channel_id, speaker_name)
         await radio_manager._send_to_user(channel_id, user_id, response)
 
     elif message_type == "speak_release":

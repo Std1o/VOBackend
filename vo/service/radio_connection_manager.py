@@ -189,7 +189,7 @@ class RadioConnectionManager:
         statement = select(tables.User).filter_by(id=user_id)
         return self.session.execute(statement).scalars().first()
 
-    async def request_speak(self, ws_user_id: str, user_id: int,  channel_id: int, speaker_name: str) -> Dict:
+    async def request_speak(self, ws_user_id: str, channel_id: int, speaker_name: str) -> Dict:
         """Запрос на право говорить в канале"""
         async with self._lock:
             if channel_id not in self.active_channels or ws_user_id not in self.active_channels[channel_id]:
@@ -205,7 +205,7 @@ class RadioConnectionManager:
 
                 username = self.active_channels[channel_id][ws_user_id].username
                 logger.info(f"🎤 НАЧАЛ ГОВОРИТЬ в канале {channel_id}: {username}")
-                owner = await self.get_channel_owner(user_id)
+                owner = await self.get_channel_owner(channel_id)
                 user = await self.get_user(owner.user_id)
                 logger.info(f"Премиум {user.premium}: {date.today()}")
                 logger.info(f"Дата {user.premium >= date.today():}")
@@ -536,6 +536,6 @@ class RadioConnectionManager:
         """Получить статус записи для канала"""
         return self.recorder.get_recording_status(channel_id)
 
-    async def get_recordings_list(self, channel_id: Optional[int] = None) -> List[Dict]:
+    async def get_recordings_list(self, timezone: str, channel_id: Optional[int] = None) -> List[Dict]:
         """Получить список всех записей"""
-        return await self.recorder.get_recordings_list(channel_id)
+        return await self.recorder.get_recordings_list(channel_id, timezone)

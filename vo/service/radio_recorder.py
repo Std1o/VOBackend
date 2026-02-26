@@ -8,6 +8,8 @@ from typing import Dict, Optional, List
 import logging
 from collections import defaultdict
 
+import pytz
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,9 +118,15 @@ class RadioRecorder:
             "speakers": list(session.speakers),
         }
 
-    async def get_recordings_list(self, channel_id: Optional[int] = None) -> List[Dict]:
+    async def get_recordings_list(self, channel_id: Optional[int] = None, timezone_str: str = 'UTC') -> List[Dict]:
         """Получить список всех записей или записей для конкретного канала"""
         import glob
+
+        # Получаем целевой часовой пояс ДЛЯ ФОРМИРОВАНИЯ ИМЕНИ ФАЙЛА ПРИ ВЫВОДЕ
+        try:
+            target_tz = pytz.timezone(timezone_str)
+        except pytz.exceptions.UnknownTimeZoneError:
+            target_tz = pytz.UTC
 
         if channel_id:
             pattern = f"channel_{channel_id}_*.wav"
@@ -130,13 +138,30 @@ class RadioRecorder:
 
         for filepath in glob.glob(search_path):
             filename = os.path.basename(filepath)
-            # Парсим имя файла: channel_123_20240101_153045_abc123.wav
+            # Парсим имя файла: channel_123_username_01_01_2024_15_30_sec_45.wav
             parts = filename.replace('.wav', '').split('_')
 
             if len(parts) >= 5:
                 rec_channel_id = int(parts[1])
-                timestamp_str = f"{parts[2]}_{parts[3]}"
-                recording_id = parts[4]
+                speaker_name = parts[2]
+
+                # Извлекаем дату из оригинального имени файла
+                day = parts[3]
+                month = parts[4]
+                year = parts[5]
+                hour = parts[6]
+                minute = parts[7]
+                second = parts[9] if len(parts) > 9 else "00"
+
+                # Создаем datetime из оригинального времени (считаем что оно в UTC)
+                original_time = datetime.strptime(f"{day}.{month}.{year} {hour}:{minute}:{second}", "%d.%m.%Y %H:%M:%S")
+                original_time = pytz.UTC.localize(original_time)
+
+                # Конвертируем в целевой часовой пояс
+                local_time = original_time.astimezone(target_tz)
+
+                # Формируем новое имя файла с временем в нужном часовом поясе
+                new_filename = f"channel_{rec_channel_id}_{speaker_name}_{local_time.strftime('%d_%m_%Y_%H_%M_sec_%S')}.wav"
 
                 # Пытаемся получить длительность из метаданных
                 duration = None
@@ -148,14 +173,15 @@ class RadioRecorder:
                     pass
 
                 recordings.append({
-                    "filename": filename,
+                    "filename": new_filename,  # Имя файла с временем в нужном часовом поясе
+                    "original_filename": filename,  # Оригинальное имя файла (на всякий случай)
                     "filepath": filepath,
                     "channel_id": rec_channel_id,
-                    "recording_id": recording_id,
-                    "timestamp": timestamp_str,
+                    "speaker_name": speaker_name,
                     "file_size_bytes": os.path.getsize(filepath),
                     "duration_seconds": duration,
-                    "created": datetime.fromtimestamp(os.path.getctime(filepath)).isoformat()
+                    "created": local_time.strftime('%d.%m.%Y %H:%M:%S'),
+                    "timezone": timezone_str
                 })
 
         # Сортируем по дате (новые сверху)
