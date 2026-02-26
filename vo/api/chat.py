@@ -1,10 +1,11 @@
-from fastapi import APIRouter, WebSocket, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, Depends, HTTPException, Query
 from starlette import status
 from starlette.websockets import WebSocketDisconnect
 from vo.model.chat import BaseMessage
 from vo.service.auth import get_current_user
 from vo.service.chat import ChatService
 from typing import Dict, List
+import json
 
 router = APIRouter(prefix='/chat')
 
@@ -13,12 +14,18 @@ active_connections: Dict[int, List[WebSocket]] = {}
 
 
 @router.websocket("/{channel_id}")
-async def chat(websocket: WebSocket,
-               channel_id: int,
-               service: ChatService = Depends()):
+async def chat(
+        websocket: WebSocket,
+        channel_id: int,
+        timezone: str = Query('UTC'),  # Получаем часовой пояс из query параметра
+        service: ChatService = Depends()
+):
     await websocket.accept()
     user = None
+    client_timezone = timezone  # Сохраняем часовой пояс клиента
+
     try:
+        # Аутентификация
         token = websocket.headers.get("Authorization")
         if not token or not token.startswith("Bearer "):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing token")
@@ -32,35 +39,45 @@ async def chat(websocket: WebSocket,
         active_connections[channel_id].append(websocket)
 
         while True:
-            # Получаем параметры запроса от клиента
-            params_data = await websocket.receive_json()
-            if params_data.get('command') == "get":
-                messages = await service.get_messages(channel_id)
-                await websocket.send_json(messages)
-            else:
-                params = BaseMessage(**params_data)
-                # Сохраняем сообщение в БД
-                saved_message = await service.create_message(params)
+            try:
+                # Получаем данные от клиента (оригинальный формат)
+                data = await websocket.receive_text()
+                params_data = json.loads(data)
 
-                # Отправляем сообщение всем клиентам в канале
-                if channel_id in active_connections:
-                    # Создаем копию списка для безопасной итерации
-                    connections = active_connections[channel_id].copy()
-                    disconnected = []
+                # Проверяем команду
+                if params_data.get('command') == "get":
+                    # Получаем сообщения с учетом часового пояса клиента
+                    messages = await service.get_messages(channel_id, client_timezone)
+                    await websocket.send_json(messages)
 
-                    for connection in connections:
-                        try:
-                            # Отправляем всем, включая отправителя
-                            await connection.send_json(saved_message)
-                        except Exception as e:
-                            # Помечаем отключенные соединения
-                            print(f"Failed to send to connection: {e}")
-                            disconnected.append(connection)
+                else:
+                    # Это сообщение для отправки (оригинальный формат)
+                    # params_data содержит BaseMessage напрямую
+                    base_message = BaseMessage(**params_data)
 
-                    # Удаляем отключенные соединения
-                    for connection in disconnected:
-                        if connection in active_connections.get(channel_id, []):
-                            active_connections[channel_id].remove(connection)
+                    # Сохраняем сообщение с указанием часового пояса клиента
+                    updated_messages = await service.create_message(base_message, client_timezone)
+
+                    # Отправляем обновленные сообщения всем в канале
+                    if channel_id in active_connections:
+                        connections = active_connections[channel_id].copy()
+                        disconnected = []
+
+                        for connection in connections:
+                            try:
+                                await connection.send_json(updated_messages)
+                            except Exception as e:
+                                disconnected.append(connection)
+
+                        # Удаляем отключенные соединения
+                        for connection in disconnected:
+                            if connection in active_connections.get(channel_id, []):
+                                active_connections[channel_id].remove(connection)
+
+            except json.JSONDecodeError:
+                await websocket.send_json({
+                    "error": "Invalid JSON format"
+                })
 
     except WebSocketDisconnect:
         print(f"WebSocket connection closed for channel_id={channel_id}.")
@@ -78,5 +95,7 @@ async def chat(websocket: WebSocket,
             if not active_connections[channel_id]:
                 del active_connections[channel_id]
 
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        print(f"Error in WebSocket connection: {e}")
+        try:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        except:
+            pass
