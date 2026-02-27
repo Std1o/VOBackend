@@ -228,17 +228,9 @@ class RadioConnectionManager:
                     "timestamp": datetime.now().isoformat()
                 }
 
-            # Если уже говорим - добавляем в очередь
             else:
-                if ws_user_id not in self.waiting_queues[channel_id]:
-                    self.waiting_queues[channel_id].append(ws_user_id)
-
-                position = self.waiting_queues[channel_id].index(ws_user_id) + 1
-
                 return {
                     "type": MessageType.SPEAK_DENIED,
-                    "message": f"You are in queue at position {position}",
-                    "position": position,
                     "current_speaker": self.active_channels[channel_id][self.current_speakers[channel_id]].username,
                     "channel_id": channel_id,
                     "timestamp": datetime.now().isoformat()
